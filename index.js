@@ -317,7 +317,24 @@ class VacBot {
     this.xmpp.on(name, func);
   }
 
+  once(name, func) {
+    this.xmpp.once(name, func);
+  }
+
+  removeListener(name, func) {
+    this.xmpp.removeListener(name, func);
+  }
+
   _handle_clean_report(iq) {
+    console.log('HERE', iq, typeof iq);
+    if (!iq) {
+      return;
+    }
+
+    if (!iq.attrs) {
+      return;
+    }
+
     this.clean_status = iq.attrs['type'];
     envLog("[VacBot] *** clean_status = " + this.clean_status);
   }
@@ -511,6 +528,7 @@ class EcoVacsXMPP extends EventEmitter {
     });
 
     this.simpleXmpp.on('stanza', (stanza) => {
+      this.emit("stanza", stanza);
       //envLog('[EcoVacsXMPP] Received stanza:', JSON.stringify(stanza));
       envLog('[EcoVacsXMPP] Received stanza XML:', stanza.toString());
       if (stanza.name == "iq" && stanza.attrs.type == "set" && !!stanza.children[0] && stanza.children[0].name == "query" && !!stanza.children[0].children[0] /*&& !!stanza.children[0].children[0].children[0]*/) {
@@ -545,6 +563,7 @@ class EcoVacsXMPP extends EventEmitter {
             break;
           case "Error":
           case "error":
+            this.emit('error', (stanza.children[0].children[0].attrs || { errno: null }));
             envLog("[EcoVacsXMPP] Received an error for action '%s': %s", stanza.children[0].children[0].attrs.action, stanza.children[0].children[0].attrs.error);
             break;
           case "OnOff":
