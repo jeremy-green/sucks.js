@@ -3,6 +3,7 @@ const https = require('https')
   , crypto = require('crypto')
   , EventEmitter = require('events')
   , fs = require('fs')
+  , xmpp = require('simple-xmpp')
   , Element = require('ltx').Element
   , countries = require('./countries.js');
 
@@ -505,7 +506,7 @@ class VacBot {
 class EcoVacsXMPP extends EventEmitter {
   constructor(bot, user, hostname, resource, secret, continent, server_address, server_port) {
     super();
-    this.simpleXmpp = require('simple-xmpp');
+    this.simpleXmpp = new xmpp.SimpleXMPP();
 
     this.bot = bot;
     this.user = user;
