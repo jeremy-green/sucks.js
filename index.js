@@ -297,11 +297,24 @@ class VacBot {
     this.charge_status = null;
     this.battery_status = null;
     this.ping_interval = null;
+    this.is_ready = false;
 
     this.xmpp = new EcoVacsXMPP(this, user, hostname, resource, secret, continent, server_address);
 
     this.xmpp.on("ready", () => {
       envLog("[VacBot] Ready event!");
+      this.is_ready = true;
+    });
+
+    this.xmpp.on("closed", () => {
+      envLog("[VacBot] Closed event!");
+
+      clearInterval(this.ping_interval);
+
+      this.ping_interval = null;
+      this.is_ready = false;
+
+      this.disconnect();
     });
   }
 
@@ -647,6 +660,11 @@ class EcoVacsXMPP extends EventEmitter {
     this.on("ready", (event) => {
       this.send_ping(this.bot._vacuum_address());
     });
+  }
+
+  disconnect() {
+    this.simpleXmpp.disconnect();
+    this.iter = 1;
   }
 }
 
