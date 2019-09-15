@@ -546,6 +546,23 @@ class EcoVacsXMPP extends EventEmitter {
       //envLog('[EcoVacsXMPP] Received stanza:', JSON.stringify(stanza));
       envLog('[EcoVacsXMPP] Received stanza XML:', stanza.toString());
       if (stanza.name == "iq" && stanza.attrs.type == "set" && !!stanza.children[0] && stanza.children[0].name == "query" && !!stanza.children[0].children[0] /*&& !!stanza.children[0].children[0].children[0]*/) {
+        if (!stanza.children[0].children[0].attrs.td) {
+          switch (stanza.children[0].children[0].children[0].name) {
+            case 'battery':
+              stanza.children[0].children[0].attrs.td = 'BatteryInfo';
+              break;
+            case 'clean':
+              stanza.children[0].children[0].attrs.td = 'CleanReport';
+              break;
+            case 'charge':
+              stanza.children[0].children[0].attrs.td = 'ChargeState';
+              break;
+            default:
+              envLog(`[EcoVacsXMPP] ${stanza.children[0].children[0].children[0].name}`)
+              break;
+          }
+        }
+
         envLog('[EcoVacsXMPP] Response for %s:, %s', stanza.children[0].children[0].attrs.td, JSON.stringify(stanza.children[0].children[0]));
         switch (stanza.children[0].children[0].attrs.td) {
           case "PushRobotNotify":
