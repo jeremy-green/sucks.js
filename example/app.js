@@ -1,16 +1,17 @@
-const sucks = require('sucks')
+const sucks = require('../index.js')
   , EcoVacsAPI = sucks.EcoVacsAPI
   , VacBot = sucks.VacBot
   , nodeMachineId = require('node-machine-id')
   , http = require('http')
-  , countries = sucks.countries;
+  , countries = sucks.countries
+  , myInfo = require('./myInfo.js');
 
-let account_id = "email@domain.com"
-  , password = "a1b2c3d4"
+let account_id = myInfo ? myInfo.ACCOUNT_ID : "email@domain.com"
+  , password = myInfo ? myInfo.PASSWORD : "a1b2c3d4"
   , password_hash = EcoVacsAPI.md5(password)
   , device_id = EcoVacsAPI.md5(nodeMachineId.machineIdSync())
-  , country = null
-  , continent = null;
+  , country = myInfo ? myInfo.COUNTRY : null
+  , continent = myInfo ? myInfo.CONTINENT : null;
 
 httpGetJson('http://ipinfo.io/json').then((json) => {
   country = json['country'].toLowerCase();

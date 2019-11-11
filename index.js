@@ -5,7 +5,8 @@ const https = require('https')
   , fs = require('fs')
   , xmpp = require('simple-xmpp')
   , Element = require('ltx').Element
-  , countries = require('./countries.js');
+  , countries = require('./countries.js')
+  , uniqid = require('uniqid');
 
 String.prototype.format = function () {
   if (arguments.length == 0) {
@@ -112,11 +113,12 @@ class EcoVacsAPI {
           params[key] = args[key];
         }
       }
-      params['requestId'] = EcoVacsAPI.md5(Number.parseFloat(Date.now() / 1000).toFixed(0));
+      params['requestId'] = EcoVacsAPI.md5(uniqid());
       let url = (EcoVacsAPI.MAIN_URL_FORMAT + "/" + func).format(this.meta);
       url = new URL(url);
       url.search = this.__sign(params).join('&');
       envLog(`[EcoVacsAPI] Calling ${url.href}`);
+      console.log(`[EcoVacsAPI] Calling with requestId${params['requestId']}`);
 
       https.get(url.href, (res) => {
         const {statusCode} = res;
