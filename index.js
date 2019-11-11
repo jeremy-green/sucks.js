@@ -1,9 +1,13 @@
+//TODO : handle response command
+//TODO : handle MQTT subscritpions (end events)
+
 const https = require('https')
   , URL = require('url').URL
   , crypto = require('crypto')
   , EventEmitter = require('events')
   , fs = require('fs')
   , xmpp = require('simple-xmpp')
+  , mqtt = require('mqtt')
   , Element = require('ltx').Element
   , countries = require('./countries.js')
   , uniqid = require('uniqid');
@@ -118,7 +122,6 @@ class EcoVacsAPI {
       url = new URL(url);
       url.search = this.__sign(params).join('&');
       envLog(`[EcoVacsAPI] Calling ${url.href}`);
-      console.log(`[EcoVacsAPI] Calling with requestId${params['requestId']}`);
 
       https.get(url.href, (res) => {
         const {statusCode} = res;
@@ -260,7 +263,20 @@ class EcoVacsAPI {
           'resource': this.resource
         }
       }).then((data) => {
-        resolve(data['devices']);
+ 
+        //Added for devices that utilize MQTT instead of XMPP for communication   
+        var augmentedDevices = [];  
+        
+        data['devices'].forEach(device => {
+          device.iotmq = false;
+          if (device.company == 'eco-ng') //Check if the device is part of the list
+            device.iotmq = true;
+          augmentedDevices.push(device);
+        });
+
+        resolve(augmentedDevices);
+
+
       }).catch((e) => {
         reject(e);
       });
@@ -292,6 +308,7 @@ EcoVacsAPI.PUBLIC_KEY = fs.readFileSync(__dirname + "/key.pem", "utf8");
 EcoVacsAPI.MAIN_URL_FORMAT = 'https://eco-{country}-api.ecovacs.com/v1/private/{country}/{lang}/{deviceId}/{appCode}/{appVersion}/{channel}/{deviceType}';
 EcoVacsAPI.USER_URL_FORMAT = 'https://users-{continent}.ecouser.net:8000/user.do';
 EcoVacsAPI.REALM = 'ecouser.net';
+EcoVacsAPI.PORTAL_URL_FORMAT = 'https://portal-ww.ecouser.net/api'
 
 class VacBot {
   constructor(user, hostname, resource, secret, vacuum, continent, server_address = null) {
@@ -302,43 +319,96 @@ class VacBot {
     this.ping_interval = null;
     this.is_ready = false;
 
-    this.xmpp = new EcoVacsXMPP(this, user, hostname, resource, secret, continent, server_address);
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp = new EcoVacsXMPP(this, user, hostname, resource, secret, continent, server_address);
 
-    this.xmpp.on("ready", () => {
-      envLog("[VacBot] Ready event!");
-      this.is_ready = true;
-    });
+      this.xmpp.on("ready", () => {
+        envLog("[VacBot] Ready event!");
+        this.is_ready = true;
+      });
+  
+      this.xmpp.on("closed", () => {
+        envLog("[VacBot] Closed event!");
+  
+        clearInterval(this.ping_interval);
+  
+        this.ping_interval = null;
+        this.is_ready = false;
+  
+        this.disconnect();
+      });
+    }
+    else
+    {
 
-    this.xmpp.on("closed", () => {
-      envLog("[VacBot] Closed event!");
+      this.iotmq = new EcoVacsIOTMQ(this, user, hostname, resource, secret, continent, server_address);
 
-      clearInterval(this.ping_interval);
+      this.iotmq.on("ready", () => {
+        envLog("[VacBot] Ready event!");
+        this.is_ready = true;
+      });
+  
+      this.iotmq.on("closed", () => {
+        envLog("[VacBot] Closed event!");
+        this.is_ready = false;
+        this.disconnect();
+      });
 
-      this.ping_interval = null;
-      this.is_ready = false;
 
-      this.disconnect();
-    });
+    }
   }
 
   connect_and_wait_until_ready() {
-    this.xmpp.connect_and_wait_until_ready();
 
-    this.ping_interval = setInterval(() => {
-      this.xmpp.send_ping(this._vacuum_address());
-    }, 30000);
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.connect_and_wait_until_ready();
+
+      this.ping_interval = setInterval(() => {
+        this.xmpp.send_ping(this._vacuum_address());
+      }, 30000);
+    }
+    else
+    {
+      this.iotmq.connect_and_wait_until_ready();
+
+    }
+
+
   }
 
   on(name, func) {
-    this.xmpp.on(name, func);
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.on(name, func);
+    }
+    else
+    {
+      this.iotmq.on(name, func);
+    }
   }
 
   once(name, func) {
-    this.xmpp.once(name, func);
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.once(name, func);
+    }
+    else
+    {
+      this.iotmq.once(name, func);
+    }
   }
 
   removeListener(name, func) {
-    this.xmpp.removeListener(name, func);
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.removeListener(name, func);
+    }
+    else
+    {
+      this.iotmq.removeListener(name, func);
+    }
   }
 
   _handle_clean_report(iq) {
@@ -397,12 +467,25 @@ class VacBot {
   }
 
   _vacuum_address() {
-    return this.vacuum['did'] + '@' + this.vacuum['class'] + '.ecorobot.net/atom'
+
+    if (!this.vacuum.iotmq)
+      return this.vacuum['did'] + '@' + this.vacuum['class'] + '.ecorobot.net/atom';
+    else
+      return this.vacuum['did']; //IOTMQ only uses the did
+
   }
 
   send_command(command) {
     envLog("[VacBot] Sending command `%s`", command.name);
-    this.xmpp.send_command(command, this._vacuum_address());
+
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.send_command(command, this._vacuum_address());
+    }
+    else
+    {     
+      this.iotmq.send_command(command, this._vacuum_address());
+    }
   }
 
   run(action) {
@@ -501,7 +584,17 @@ class VacBot {
   }
 
   disconnect() {
-    this.xmpp.disconnect();
+    
+
+    if (!this.vacuum.iotmq)
+    {
+      this.xmpp.disconnect();
+    }
+    else
+    {     
+      this.iotmq.disconnect();
+    }
+
   }
 }
 
@@ -688,6 +781,235 @@ class EcoVacsXMPP extends EventEmitter {
   }
 }
 
+class EcoVacsIOTMQ extends EventEmitter {
+  constructor(bot, user, hostname, resource, secret, continent, server_address, server_port) {
+    super();
+
+    this.bot = bot;
+    this.user = user;
+    this.hostname = hostname.split(".")[0];
+    this.resource = resource;
+    this.secret = secret;
+    this.continent = continent;
+
+    if (!server_address) {
+      this.server_address = 'mq-{continent}.ecouser.net'.format({continent: continent});
+    } else {
+      this.server_address = server_address;
+    }
+
+    if (!server_port) {
+      this.server_port = 8883
+    } else {
+      this.server_port = server_port;
+    }
+
+  }
+
+  session_start(event) {
+    envLog("[EcoVacsIOTMQ] ----------------- starting session ----------------")
+    envLog("[EcoVacsIOTMQ] event = {event}".format({event: JSON.stringify(event)}));
+    this.emit("ready", event);
+  }
+
+  subscribe_to_ctls(func) {
+    envLog("[EcoVacsIOTMQ] Adding listener to ready event");
+    this.on("ready", func);
+  }
+
+  send_command(action, recipient) {
+
+    if (action.name == "Clean") //For handling Clean when action not specified (i.e. CLI)
+      action.args.clean.act = 'start'; //Inject a start action
+
+    let c = this._wrap_command(action, recipient);
+    envLog('[EcoVacsIOTMQ] Sending payload:', JSON.stringify(c));
+    
+    this._handle_ctl_api(action, 
+      this.__call_iotdevmanager_api(c)
+      )
+      
+  }
+
+  _handle_ctl_api(action, message) {
+    if (!message == {})
+    {
+        let resp = this._ctl_to_dict_api(action, message['resp']);
+        if (resp)
+        {
+          for (s in self.ctl_subscribers)
+            s(resp);
+        }
+    }
+  }
+
+
+  _ctl_to_dict_api(action, xmlstring)
+  {
+
+    console.log(xmlstring);
+
+    /*
+    xml = ET.fromstring(xmlstring)
+
+    xmlchild = xml.getchildren()
+    if len(xmlchild) > 0:
+        result = xmlchild[0].attrib.copy()
+        #Fix for difference in XMPP vs API response
+        #Depending on the report will use the tag and add "report" to fit the mold of sucks library
+        if xmlchild[0].tag == "clean":
+            result['event'] = "CleanReport"
+        elif xmlchild[0].tag == "charge":
+            result['event'] = "ChargeState"
+        elif xmlchild[0].tag == "battery":
+            result['event'] = "BatteryInfo"
+        else: #Default back to replacing Get from the api cmdName
+            result['event'] = action.name.replace("Get","",1) 
+  
+    else:
+        result = xml.attrib.copy()
+        result['event'] = action.name.replace("Get","",1)
+        if 'ret' in result: #Handle errors as needed
+            if result['ret'] == 'fail':
+                if action.name == "Charge": #So far only seen this with Charge, when already docked
+                    result['event'] = "ChargeState"
+  
+    for key in result:
+        if not RepresentsInt(result[key]): #Fix to handle negative int values
+            result[key] = stringcase.snakecase(result[key])
+  */
+    return result  
+  }
+ 
+
+
+  __call_iotdevmanager_api(args)
+  {
+
+    return new Promise((resolve, reject) => {
+      envLog("[EcoVacsIOTMQ] calling iot api with %s", JSON.stringify(args));
+      let params = {};
+      for (let key in args) {
+        if (args.hasOwnProperty(key)) {
+          params[key] = args[key];
+        }
+      }
+
+      let url = EcoVacsAPI.PORTAL_URL_FORMAT.format({continent: this.continent}) + "/iot/devmanager.do" ;
+      url = new URL(url);
+      envLog(`[EcoVacsIOTMQ] Calling ${url.href}`);
+
+      const reqOptions = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(JSON.stringify(params))
+        }
+      };
+      envLog("[EcoVacsIOTMQ] Sending POST to", JSON.stringify(reqOptions));
+
+      const req = https.request(reqOptions, (res) => {
+        res.setEncoding('utf8');
+        let rawData = '';
+        res.on('data', (chunk) => {
+          rawData += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(rawData);
+            envLog("[EcoVacsIOTMQ] got %s", JSON.stringify(json));
+            if (json['ret'] == 'ok') {
+              resolve(json);
+            } else {
+              envLog("[EcoVacsIOTMQ] call failed with %s", JSON.stringify(json));
+              throw "failure code {errno} ({error}) for  parameters {params}".format({
+                errno: json['errno'],
+                error: json['error'],
+                params: JSON.stringify(args)
+              });
+            }
+          } catch (e) {
+            console.error("[EcoVacsIOTMQ] " + e.message);
+            reject(e);
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error(`[EcoVacsIOTMQ] problem with request: ${e.message}`);
+        reject(e);
+      });
+
+      // write data to request body
+      envLog("[EcoVacsIOTMQ] Sending", JSON.stringify(params));
+      req.write(JSON.stringify(params));
+      req.end();
+    });
+
+  }
+
+
+
+  _wrap_command(cmd, recipient) {
+
+    let payloadxml = cmd.to_xml(false);
+
+    return {
+        'auth': {
+            'realm': EcoVacsAPI.REALM,
+            'resource': this.resource,
+            'token': this.secret,
+            'userid': this.user,
+            'with': 'users',
+        },
+        "cmdName": cmd.name,            
+        "payload": payloadxml.toString(),  
+        "payloadType": "x",
+        "td": "q",
+        "toId": recipient,
+        "toRes": this.bot.vacuum.resource,
+        "toType": this.bot.vacuum.class
+    } 
+
+  }
+
+  _my_address() {
+    return this.user + '@' + this.hostname + '/' + this.resource;
+  }
+
+  connect_and_wait_until_ready() {
+
+    this.mqttClient = mqtt.connect({
+      host: this.server_address
+      ,port: this.server_port
+      ,rejectUnauthorized: false
+      ,protocol: 'mqtts'
+      ,clientId: this.user + '@' + this.hostname + '/' + this.resource 
+      ,username: this.user + '@' + this.hostname
+      ,password: this.secret
+    });
+
+    var that = this;
+    this.mqttClient.on('connect', function (event) {
+      that.session_start(event);
+    })
+    
+    this.mqttClient.on('message', function (topic, message) {
+      // message is Buffer
+      envLog(message.toString())
+      that.mqttClient.end()
+    })
+
+  }
+
+  disconnect() {
+    this.mqttClient.end();
+  }
+}
+
 class VacBotCommand {
   constructor(name, args = null) {
     if (args == null) {
@@ -697,8 +1019,8 @@ class VacBotCommand {
     this.args = args;
   }
 
-  to_xml() {
-    let ctl = new Element('ctl', {td: this.name});
+  to_xml(withTD=true) {
+    let ctl = new Element('ctl', withTD?{td: this.name}:"");
     for (let key in this.args) {
       if (this.args.hasOwnProperty(key)) {
         let value = this.args[key];

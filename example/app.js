@@ -40,20 +40,22 @@ httpGetJson('http://ipinfo.io/json').then((json) => {
     console.log("Connected!");
     // Get devices
     api.devices().then((devices) => {
-      console.log("Devices:", JSON.stringify(devices));
 
       let vacuum = devices[0];
       let vacbot = new VacBot(api.uid, EcoVacsAPI.REALM, api.resource, api.user_access_token, vacuum, continent);
+
       vacbot.on("ready", (event) => {
         console.log("Vacbot ready: %s", JSON.stringify(event.jid));
 
         vacbot.run("batterystate");
+        
         vacbot.run("clean");
+        /*
         setTimeout(() => {
           vacbot.run("stop");
           vacbot.run("charge");
         }, 60000);
-
+*/
         vacbot.on("BatteryInfo", (battery) => {
           console.log("Battery level: %d\%", Math.round(battery * 100));
         });
