@@ -9,6 +9,7 @@ const https = require('https')
   , xmpp = require('simple-xmpp')
   , mqtt = require('mqtt')
   , Element = require('ltx').Element
+  , ltx = require('ltx')
   , countries = require('./countries.js')
   , uniqid = require('uniqid');
 
@@ -819,70 +820,69 @@ class EcoVacsIOTMQ extends EventEmitter {
 
   send_command(action, recipient) {
 
-    if (action.name == "Clean") //For handling Clean when action not specified (i.e. CLI)
-      action.args.clean.act = 'start'; //Inject a start action
+    if (action.name == "clean" || action.name == "Clean") //For handling Clean when action not specified (i.e. CLI)
+      action.args.clean.act = 's'; //Inject a start action
 
     let c = this._wrap_command(action, recipient);
     envLog('[EcoVacsIOTMQ] Sending payload:', JSON.stringify(c));
     
-    this._handle_ctl_api(action, 
-      this.__call_iotdevmanager_api(c)
-      )
+    this.__call_iotdevmanager_api(c).then((info) => {
+      console.log(info);
+      this._handle_ctl_api(action,info);
+    });
       
   }
 
   _handle_ctl_api(action, message) {
-    if (!message == {})
+
+    if (message && message.resp)
     {
-        let resp = this._ctl_to_dict_api(action, message['resp']);
+
+
+        let resp = this._ctl_to_dict_api(action, message.resp);
+
+        console.log("Retour " + action + "/" + resp);
+
+
         if (resp)
         {
-          for (s in self.ctl_subscribers)
-            s(resp);
+          this.emit(resp.event, resp.attrs);
         }
     }
   }
-
-
   _ctl_to_dict_api(action, xmlstring)
   {
+    let xml = ltx.parse(xmlstring);
+    let result;
 
-    console.log(xmlstring);
+    if (xml.children.length >0)
+    {
+      result = xml.children[0];
 
-    /*
-    xml = ET.fromstring(xmlstring)
+      if (result.tag == "clean")
+      result.event = "CleanReport";
+      else if (result.tag == "charge")
+      result.event = "ChargeState";
+      else if (result.tag == "battery")
+      result.event = "BatteryInfo";
+      else
+      result.event = action.name.replace("Get","",1) ;
+    }
+    else
+    {
+      result = xml;
+      result.event = action.name.replace("Get","",1) ;
+      if (result.ret && result.ret == "fail")
+      {
+        if (action.name == "Charge")
+          result.event = "ChargeState"
+      }
+    }
 
-    xmlchild = xml.getchildren()
-    if len(xmlchild) > 0:
-        result = xmlchild[0].attrib.copy()
-        #Fix for difference in XMPP vs API response
-        #Depending on the report will use the tag and add "report" to fit the mold of sucks library
-        if xmlchild[0].tag == "clean":
-            result['event'] = "CleanReport"
-        elif xmlchild[0].tag == "charge":
-            result['event'] = "ChargeState"
-        elif xmlchild[0].tag == "battery":
-            result['event'] = "BatteryInfo"
-        else: #Default back to replacing Get from the api cmdName
-            result['event'] = action.name.replace("Get","",1) 
-  
-    else:
-        result = xml.attrib.copy()
-        result['event'] = action.name.replace("Get","",1)
-        if 'ret' in result: #Handle errors as needed
-            if result['ret'] == 'fail':
-                if action.name == "Charge": #So far only seen this with Charge, when already docked
-                    result['event'] = "ChargeState"
-  
-    for key in result:
-        if not RepresentsInt(result[key]): #Fix to handle negative int values
-            result[key] = stringcase.snakecase(result[key])
-  */
-    return result  
+    return result;
+
   }
  
-
-
   __call_iotdevmanager_api(args)
   {
 
@@ -1035,7 +1035,7 @@ class VacBotCommand {
   }
 
   toString() {
-    return this.command_name() + " command";
+    return this.command_name();
   }
 
   command_name() {
