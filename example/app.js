@@ -1,16 +1,17 @@
-const sucks = require('sucks')
+const sucks = require('../index.js')
   , EcoVacsAPI = sucks.EcoVacsAPI
   , VacBot = sucks.VacBot
   , nodeMachineId = require('node-machine-id')
   , http = require('http')
-  , countries = sucks.countries;
+  , countries = sucks.countries
+  , myInfo = require('./myInfo.js');
 
-let account_id = "email@domain.com"
-  , password = "a1b2c3d4"
+let account_id = myInfo ? myInfo.ACCOUNT_ID : "email@domain.com"
+  , password = myInfo ? myInfo.PASSWORD : "a1b2c3d4"
   , password_hash = EcoVacsAPI.md5(password)
   , device_id = EcoVacsAPI.md5(nodeMachineId.machineIdSync())
-  , country = null
-  , continent = null;
+  , country = myInfo ? myInfo.COUNTRY : null
+  , continent = myInfo ? myInfo.CONTINENT : null;
 
 httpGetJson('http://ipinfo.io/json').then((json) => {
   country = json['country'].toLowerCase();
@@ -30,7 +31,7 @@ httpGetJson('http://ipinfo.io/json').then((json) => {
   console.log("Password hash: %s", password_hash);
   console.log("Encrypted password hash: %s", EcoVacsAPI.encrypt(password_hash));
   console.log("Country: %s", country);
-  console.log("Conttinent: %s", continent);
+  console.log("Continent: %s", continent);
 
   let api = new EcoVacsAPI(device_id, country, continent);
 
@@ -39,22 +40,25 @@ httpGetJson('http://ipinfo.io/json').then((json) => {
     console.log("Connected!");
     // Get devices
     api.devices().then((devices) => {
-      console.log("Devices:", JSON.stringify(devices));
 
       let vacuum = devices[0];
       let vacbot = new VacBot(api.uid, EcoVacsAPI.REALM, api.resource, api.user_access_token, vacuum, continent);
+
       vacbot.on("ready", (event) => {
-        console.log("Vacbot ready: %s", JSON.stringify(event.jid));
+       console.log("Vacbot ready");
 
-        vacbot.run("batterystate");
-        vacbot.run("clean");
-        setTimeout(() => {
-          vacbot.run("stop");
-          vacbot.run("charge");
-        }, 60000);
+       vacbot.run("batterystate");
+       vacbot.run("clean");
+       
+       
+       
+       setTimeout(() => {
+        vacbot.run("stop");
+        vacbot.run("charge");
+      }, 10000);
 
-        vacbot.on("BatteryInfo", (battery) => {
-          console.log("Battery level: %d\%", Math.round(battery * 100));
+       vacbot.on("BatteryInfo", (battery) => {
+          console.log("Battery level: %d\%", Math.round(battery.power));
         });
 
         vacbot.on("CleanReport", (clean_status) => {
