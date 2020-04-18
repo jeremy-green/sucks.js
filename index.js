@@ -413,7 +413,7 @@ class VacBot {
   }
 
   _handle_clean_report(iq) {
-    console.log('HERE', iq, typeof iq);
+    envLog('HERE', iq, typeof iq);
     if (!iq) {
       return;
     }
@@ -827,7 +827,7 @@ class EcoVacsIOTMQ extends EventEmitter {
     envLog('[EcoVacsIOTMQ] Sending payload:', JSON.stringify(c));
     
     this.__call_iotdevmanager_api(c).then((info) => {
-      console.log(info);
+      envLog(info);
       this._handle_ctl_api(action,info);
     })
     .catch((e) => {
@@ -844,7 +844,7 @@ class EcoVacsIOTMQ extends EventEmitter {
 
         let resp = this._ctl_to_dict_api(action, message.resp);
 
-        console.log("Retour " + action + "/" + resp);
+        envLog("Retour " + action + "/" + resp);
 
 
         if (resp)
@@ -927,7 +927,7 @@ class EcoVacsIOTMQ extends EventEmitter {
             if (json['ret'] == 'ok') {
               resolve(json);
             } else {
-              envLog("[EcoVacsIOTMQ] call failed with %s", JSON.stringify(json));
+              console.error("[EcoVacsIOTMQ] call failed with %s", JSON.stringify(json));
               throw new Error("failure code {errno} ({error}) for  parameters {params}".format({
                 errno: json['errno'],
                 error: json['error'],
