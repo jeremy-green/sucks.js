@@ -28,13 +28,13 @@ class EcoVacsAPI {
     envLog("[EcoVacsAPI] Setting up EcoVacsAPI");
 
     if (!device_id) {
-      throw "No Device ID provided";
+      throw new Error("No Device ID provided");
     }
     if (!country) {
-      throw "No Country code provided";
+      throw new Error("No Country code provided");
     }
     if (!continent) {
-      throw "No Continent provided";
+      throw new Error("No Continent provided");
     }
 
     this.meta = {
@@ -214,12 +214,12 @@ class EcoVacsAPI {
               resolve(json);
             } else {
               envLog("[EcoVacsAPI] call to %s failed with %s", func, JSON.stringify(json));
-              throw "failure code {errno} ({error}) for call {func} and parameters {params}".format({
+              throw new Error("failure code {errno} ({error}) for call {func} and parameters {params}".format({
                 errno: json['errno'],
                 error: json['error'],
                 func: func,
                 params: JSON.stringify(args)
-              });
+              }));
             }
           } catch (e) {
             console.error("[EcoVacsAPI] " + e.message);
@@ -429,7 +429,7 @@ class VacBot {
   _handle_battery_info(iq) {
     try {
       if (iq.name !== "battery") {
-        throw "Not a battery state";
+        throw new Error("Not a battery state");
       }
       this.battery_status = parseFloat(iq.attrs['power']) / 100;
       envLog("[VacBot] *** battery_status = %d\%", this.battery_status * 100);
@@ -441,7 +441,7 @@ class VacBot {
   _handle_charge_state(iq) {
     try {
       if (iq.name !== "charge") {
-        throw "Not a charge state";
+        throw new Error("Not a charge state");
       }
 
       let report = iq.attrs['type'];
@@ -829,7 +829,10 @@ class EcoVacsIOTMQ extends EventEmitter {
     this.__call_iotdevmanager_api(c).then((info) => {
       console.log(info);
       this._handle_ctl_api(action,info);
-    });
+    })
+    .catch((e) => {
+      console.error("[VacBot] couldn't send command ", action);
+    });;
       
   }
 
@@ -925,11 +928,11 @@ class EcoVacsIOTMQ extends EventEmitter {
               resolve(json);
             } else {
               envLog("[EcoVacsIOTMQ] call failed with %s", JSON.stringify(json));
-              throw "failure code {errno} ({error}) for  parameters {params}".format({
+              throw new Error("failure code {errno} ({error}) for  parameters {params}".format({
                 errno: json['errno'],
                 error: json['error'],
                 params: JSON.stringify(args)
-              });
+              }));
             }
           } catch (e) {
             console.error("[EcoVacsIOTMQ] " + e.message);
